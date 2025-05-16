@@ -1,7 +1,7 @@
-from fastapi import HTTPException
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
+from app.exceptions import WrongCurrencyException, UserNotFoundException, TransactionAlreadyExistsException
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.category import Category
@@ -12,15 +12,15 @@ from app.services.categorizer import categorize_transaction
 
 async def create_transaction(session: AsyncSession, tx_data: TransactionCreate) -> Transaction:
     if tx_data.currency != "RUB":
-        raise HTTPException(status_code=400, detail="Оплата доступна только рублями")
+        raise WrongCurrencyException
 
     user = await session.get(User, tx_data.user_id)
     if not user:
-        raise HTTPException(status_code=404, detail=f"Пользователя с ID {tx_data.user_id} не существует")
+        raise UserNotFoundException
 
     existing = await session.get(Transaction, tx_data.id)
     if existing:
-        raise HTTPException(status_code=400, detail="Транзакция с таким id уже существует")
+        raise TransactionAlreadyExistsException
 
     category_name = tx_data.category or await categorize_transaction(tx_data.description or "")
     result = await session.execute(select(Category).where(Category.name == category_name))
@@ -54,20 +54,20 @@ async def create_transaction(session: AsyncSession, tx_data: TransactionCreate) 
     return tx
 
 
+async def get_transactions(session: AsyncSession, user_id: int = None):
+    stmt = select(Transaction)
+    if user_id:
+        stmt = stmt.where(Transaction.user_id == user_id)
+    result = await session.execute(stmt)
+    return result.scalars().all()
+
+
 async def get_transactions_by_user_and_period(session: AsyncSession, user_id: int, start: datetime, end: datetime):
     stmt = select(Transaction).where(
         Transaction.user_id == user_id,
         Transaction.timestamp >= start,
         Transaction.timestamp <= end
     )
-    result = await session.execute(stmt)
-    return result.scalars().all()
-
-
-async def get_transactions(session: AsyncSession, user_id: int = None):
-    stmt = select(Transaction)
-    if user_id:
-        stmt = stmt.where(Transaction.user_id == user_id)
     result = await session.execute(stmt)
     return result.scalars().all()
 

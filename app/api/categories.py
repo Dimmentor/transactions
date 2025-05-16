@@ -6,7 +6,9 @@ from app.schemas.category import CategoryRead
 from app.db.session import get_session
 from typing import List
 
+
 router = APIRouter(prefix="/categories", tags=["categories"])
+
 
 @router.get("/", response_model=List[CategoryRead])
 async def list_categories(session: AsyncSession = Depends(get_session)):

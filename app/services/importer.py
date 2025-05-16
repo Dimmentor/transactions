@@ -3,7 +3,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pathlib import Path
-from fastapi import HTTPException
+from app.exceptions import FileNotFoundException
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate
@@ -18,22 +18,21 @@ logging.basicConfig(level=logging.INFO)
 async def import_transactions_from_json(session: AsyncSession, file_path: str):
     path = Path(file_path)
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        raise FileNotFoundException
 
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
     created = []
-    stats_data = []
+
     for tx_dict in data:
         tx = TransactionCreate(**tx_dict)
-        ...
+
         existing = await session.get(Transaction, tx.id)
         if existing:
-            logger.info(f"Skipping existing transaction: {tx.id}")
+            logger.info(f"Пропуск существующих транзакций: {tx.id}")
             continue
 
-        # Добавляем или получаем категорию (или определяем автоматически)
         category_name = tx.category or await categorize_transaction(tx.description or "")
         result = await session.execute(select(Category).where(Category.name == category_name))
         category = result.scalar_one_or_none()
@@ -53,9 +52,12 @@ async def import_transactions_from_json(session: AsyncSession, file_path: str):
         session.add(tx_model)
         created.append(tx_model)
 
-        # сохраняем данные отдельно до коммита
-        stats_data.append((tx.timestamp.date(), -tx.amount) if tx.amount < 0 else None)
+        await check_spending_limits(
+            session=session,
+            user_id=tx.user_id,
+            tx_date=tx.timestamp.date(),
+            new_amount=tx.amount
+        )
 
     await session.commit()
-    await check_spending_limits(stats_data)
     return created

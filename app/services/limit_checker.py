@@ -19,7 +19,7 @@ async def check_spending_limits(
     if new_amount >= 0:
         return
 
-    # Получаем все траты за ±6 дней
+    #Получаем все оплаты за 6 дней
     start_date = tx_date - timedelta(days=6)
     end_date = tx_date + timedelta(days=1)
 
@@ -33,12 +33,10 @@ async def check_spending_limits(
     result = await session.execute(stmt)
     transactions = result.scalars().all()
 
-    # Сумма по дню
     spent_today = abs(new_amount) + sum(
         abs(tx.amount) for tx in transactions if tx.timestamp.date() == tx_date
     )
 
-    # Сумма по ISO-неделе
     new_week = tx_date.isocalendar()[1]
     new_year = tx_date.isocalendar()[0]
 
@@ -50,7 +48,7 @@ async def check_spending_limits(
     )
 
     if spent_today > daily_limit:
-        logger.warning(f"Ежедневный лимит в {daily_limit} руб. превышен")
+        logger.warning(f"Ежедневный лимит в {daily_limit} превышен")
 
     if spent_week > weekly_limit:
         logger.warning(f"Еженедельный лимит в {weekly_limit} превышен")
