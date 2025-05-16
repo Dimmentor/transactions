@@ -1,16 +1,17 @@
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
+
 from app.exceptions import WrongCurrencyException, UserNotFoundException, TransactionAlreadyExistsException
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.models.category import Category
 from app.schemas.transaction import TransactionCreate
+from app.services.categorizer import categorize_transaction, get_or_create_category
 from app.services.limit_checker import check_spending_limits
-from app.services.categorizer import categorize_transaction
 
 
 async def create_transaction(session: AsyncSession, tx_data: TransactionCreate) -> Transaction:
+    """Обработка исключений"""
     if tx_data.currency != "RUB":
         raise WrongCurrencyException
 
@@ -23,24 +24,17 @@ async def create_transaction(session: AsyncSession, tx_data: TransactionCreate) 
         raise TransactionAlreadyExistsException
 
     category_name = tx_data.category or await categorize_transaction(tx_data.description or "")
-    result = await session.execute(select(Category).where(Category.name == category_name))
-    category = result.scalar_one_or_none()
-    if not category:
-        category = Category(name=category_name)
-        session.add(category)
-        await session.flush()
-    category_id = category.id
+    category = await get_or_create_category(session, category_name)
 
     tx = Transaction(
         id=tx_data.id,
         user_id=tx_data.user_id,
         amount=tx_data.amount,
-        category_id=category_id,
+        category_id=category.id,
         timestamp=tx_data.timestamp
     )
+
     session.add(tx)
-    await session.commit()
-    await session.refresh(tx)
 
     await check_spending_limits(
         session=session,
@@ -49,7 +43,8 @@ async def create_transaction(session: AsyncSession, tx_data: TransactionCreate) 
         new_amount=tx.amount
     )
 
-    await session.refresh(tx, attribute_names=["category"])
+    await session.commit()
+    await session.refresh(tx)
 
     return tx
 

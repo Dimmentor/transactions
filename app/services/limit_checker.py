@@ -19,7 +19,7 @@ async def check_spending_limits(
     if new_amount >= 0:
         return
 
-    #Получаем все оплаты за 6 дней
+    #Получаем все оплаты за 7 дней
     start_date = tx_date - timedelta(days=6)
     end_date = tx_date + timedelta(days=1)
 
